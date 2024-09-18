@@ -1,0 +1,4 @@
+requests
+speedtest-python
+libtorrent
+python-telegram-bot
