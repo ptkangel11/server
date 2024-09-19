@@ -1,7 +1,9 @@
 import os
-import qbittorrentapi
+import requests
 import speedtest
 import time
+import libtorrent as lt
+import datetime
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, CallbackContext
 from telegram.ext import MessageHandler, filters
@@ -11,35 +13,7 @@ from telegram import ReplyKeyboardMarkup
 GOFILE_API_KEY = "KIxsOddlMz2Iy9Bbng0e3Yke2QsUEr3j"
 bot_token = '7259838966:AAE69fL3BJKVXclATA8n6wYCKI0OmqStKrM'
 
-# Conectar ao cliente qBittorrent local
-qb = qbittorrentapi.Client(host='localhost', port=8080)
-
-# Função para verificar se a conexão está funcionando
-def check_qbittorrent_connection():
-    try:
-        qb.auth_log_in()  # Testa a conexão
-    except qbittorrentapi.LoginFailed as e:
-        print(f"Erro ao conectar no qBittorrent: {e}")
-        raise
-
-# Função para adicionar torrent via link magnet ou arquivo .torrent
-def qbittorrent_add_torrent(torrent_link):
-    try:
-        # Adicionar o torrent via link magnet ou URL
-        qb.torrents_add(urls=torrent_link)
-        return "Torrent adicionado com sucesso!"
-    except Exception as e:
-        raise Exception(f"Erro ao adicionar o torrent: {e}")
-
-# Função para monitorar o progresso do torrent
-def qbittorrent_get_torrents():
-    try:
-        torrents = qb.torrents_info()  # Pegar informações de todos os torrents
-        return torrents
-    except Exception as e:
-        raise Exception(f"Erro ao obter informações dos torrents: {e}")
-
-# Função para fazer upload do arquivo para o GoFile usando rclone
+# Função para fazer upload do arquivo para o GoFile
 def upload_file_rclone(file_path):
     try:
         rclone_upload_command = f'rclone copy "{file_path}" gofile:./Torrent/'
@@ -83,56 +57,83 @@ async def show_menu(update: Update, context: CallbackContext) -> None:
     )
     await update.message.reply_text(menu_message)
 
-# Função para baixar torrent usando qBittorrent e fazer upload para GoFile
+# Função para baixar torrent usando libtorrent e fazer upload para GoFile
 async def start_download(update: Update, context: CallbackContext) -> None:
     if len(context.args) == 0:
         await update.message.reply_text("Por favor, forneça um link magnet ou um URL de arquivo torrent.")
         return
     
     link = context.args[0]
-    
-    try:
-        qbittorrent_add_torrent(link)
-        await update.message.reply_text(f'Baixando `{link}`... Monitorando progresso.')
-    except Exception as e:
-        await update.message.reply_text(f"Erro ao adicionar o torrent: {e}")
-        return
+    params = {
+        'save_path': './Torrent/',  # Caminho de salvamento do arquivo
+        'storage_mode': lt.storage_mode_t(2),
+    }
 
-    # Monitorar progresso
-    while True:
-        torrents = qbittorrent_get_torrents()
-        if not torrents:
-            await update.message.reply_text("Nenhum torrent encontrado.")
-            break
+    # Configura sessão de libtorrent
+    ses = lt.session()
 
-        for torrent in torrents:
-            progress_message = (
-                f'{torrent.name} - {torrent.progress * 100:.2f}% completo\n'
-                f'Download: {torrent.dlspeed / 1000:.1f} kB/s\n'
-                f'Upload: {torrent.upspeed / 1000:.1f} kB/s\n'
-                f'Peers: {torrent.num_complete}\n'
-                f'Estado: {torrent.state}'
-            )
-            await update.message.reply_text(progress_message)
+    # Se for um arquivo .torrent
+    if link.endswith('.torrent'):
+        import wget
+        from torf import Torrent
 
-            # Se o download estiver concluído
-            if torrent.state == "uploading":
-                file_path = os.path.join('./Torrent/', torrent.name)
-                rclone_response = upload_file_rclone(file_path)
-                if rclone_response:
-                    await update.message.reply_text(rclone_response)
-                    
-                    # Deletar arquivo após upload
-                    try:
-                        os.remove(file_path)
-                        await update.message.reply_text(f"Arquivo `{file_path}` deletado com sucesso.")
-                    except Exception as e:
-                        await update.message.reply_text(f"Erro ao deletar o arquivo: {e}")
-                else:
-                    await update.message.reply_text("Erro ao fazer upload do arquivo com rclone.")
-                return
+        if os.path.exists('torrent.torrent'):
+            os.remove('torrent.torrent')
 
+        # Baixar arquivo torrent
+        wget.download(link, 'torrent.torrent')
+        t = Torrent.read('torrent.torrent')
+        link = str(t.magnet(name=True, size=False, trackers=False, tracker=False))
+
+    await update.message.reply_text(f'Baixando `{link}`... Monitorando progresso.')
+
+    # Usando a nova abordagem com `parse_magnet_uri` e `add_torrent`
+    torrent_params = lt.parse_magnet_uri(link)
+    torrent_params.save_path = './Torrent/'  # Defina o caminho de salvamento
+    torrent_params.flags |= lt.torrent_flags.sequential_download
+
+    handle = ses.add_torrent(torrent_params)
+
+    # Monitorando o progresso
+    while not handle.status().has_metadata:
+        await update.message.reply_text('Baixando Metadados...')
+        time.sleep(1)
+
+    await update.message.reply_text('Metadados baixados! Iniciando download...')
+
+    # Baixar o arquivo
+    while handle.status().state != lt.torrent_status.seeding:
+        s = handle.status()
+        state_str = ['queued', 'checking', 'downloading metadata',
+                     'downloading', 'finished', 'seeding', 'allocating']
+        progress_message = (
+            f'{handle.name()} - {s.progress * 100:.2f}% completo\n'
+            f'Download: {s.download_rate / 1000:.1f} kB/s\n'
+            f'Upload: {s.upload_rate / 1000:.1f} kB/s\n'
+            f'Peers: {s.num_peers}\n'
+            f'Estado: {state_str[s.state]}'
+        )
+        await update.message.reply_text(progress_message)
         time.sleep(5)
+
+    await update.message.reply_text(f'Download concluído: {handle.name()}')
+
+    # Caminho do arquivo baixado
+    file_path = os.path.join(params['save_path'], handle.name())
+
+    # Upload para GoFile usando rclone
+    rclone_response = upload_file_rclone(file_path)
+    if rclone_response:
+        await update.message.reply_text(rclone_response)
+        
+        # Deletar arquivo após upload
+        try:
+            os.remove(file_path)
+            await update.message.reply_text(f"Arquivo `{file_path}` deletado com sucesso.")
+        except Exception as e:
+            await update.message.reply_text(f"Erro ao deletar o arquivo: {e}")
+    else:
+        await update.message.reply_text("Erro ao fazer upload do arquivo com rclone.")
 
 # Criação de um menu flutuante com as opções
 def get_reply_keyboard():
