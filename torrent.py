@@ -33,15 +33,11 @@ def execute_gofile_py(file_path):
     result = subprocess.run(['python', 'gofile.py', file_path], capture_output=True, text=True)
     return result.stdout
 
-def parallel_upload(file_path):
-    upload_thread = threading.Thread(target=execute_upload_command, args=(file_path,))
+def parallel_upload(file_path, update, context): # ->  e aqui
+    upload_thread = threading.Thread(target=execute_upload_command, args=(file_path, update, context)) #  <-  e aqui
     gofile_thread = threading.Thread(target=execute_gofile_py, args=(file_path,))
-
     upload_thread.start()
     gofile_thread.start()
-
-    upload_thread.join()
-    gofile_thread.join()
 
     # Aqui você pode adicionar lógica para verificar o resultado do upload, se necessário
 
@@ -101,7 +97,7 @@ async def start_download(update: Update, context: CallbackContext) -> None:
         file_path = await download_torrent(link, update, context)
         if file_path:
             await update.message.reply_text(f'Download concluído. Iniciando upload para GoFile...')
-            parallel_upload(file_path)
+             parallel_upload(file_path, update, context) # ->  Passar update e context aqui
             await update.message.reply_text("Upload iniciado em paralelo. Aguarde o processo ser concluído.")
         else:
             await update.message.reply_text("Erro ao baixar o arquivo torrent.")
