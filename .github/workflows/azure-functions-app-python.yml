@@ -22,23 +22,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install qbittorrent-api python-telegram-bot speedtest-cli
-
-    - name: Install rclone
-      run: |
-        curl https://rclone.org/install.sh | sudo bash
-
-    - name: Criar rclone.conf a partir de segredos
-      run: |
-        mkdir -p ~/.config/rclone/
-        echo "[gofile]" > ~/.config/rclone/rclone.conf
-        echo "type = gofile" >> ~/.config/rclone/rclone.conf
-        echo "api_key = ${{ secrets.RCLONE_GOFILE_API_KEY }}" >> ~/.config/rclone/rclone.conf
-
-    - name: Mount rclone
-      run: |
-        sudo mkdir -p /mnt/rclone/Torrent/
-        sudo rclone mount gofile: /mnt/rclone/Torrent/ --vfs-cache-mode full &
+        pip install qbittorrent-api python-telegram-bot speedtest-cli requests
 
     - name: Run Telegram Bot
       env:
