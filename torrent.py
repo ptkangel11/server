@@ -13,18 +13,19 @@ bot_token = '7259838966:AAE69fL3BJKVXclATA8n6wYCKI0OmqStKrM'
 DOWNLOAD_PATH = "./downloads/"
 
 async def encode_file(file_path: str) -> MultipartEncoder:
-    return MultipartEncoder(fields={'filesUploaded': (os.path.basename(file_path), open(file_path, 'rb'))})
+    return MultipartEncoder(fields={'file': (os.path.basename(file_path), open(file_path, 'rb'), 'application/octet-stream')})
 
 async def get_server() -> str:
     url = "https://api.gofile.io/servers"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
+            if resp.status == 429:
+                raise Exception("Rate limit atingido. Tentando novamente após 60 segundos...")
             if resp.status == 200:
                 server_data = await resp.json()
                 servers = server_data['data']['servers']
                 if servers:
-                    server = servers[0]['name']
-                    return server
+                    return servers[0]['name']  # Retorna o primeiro servidor disponível
                 else:
                     raise Exception("Nenhum servidor disponível.")
             else:
@@ -34,18 +35,23 @@ async def upload_file(file_path: str, update: Update) -> None:
     try:
         if os.path.isdir(file_path):
             await update.message.reply_text(f"O caminho {file_path} é um diretório. Fazendo upload de todos os arquivos no diretório.")
-            # Iterar sobre os arquivos no diretório e fazer upload de cada um
             for root, dirs, files in os.walk(file_path):
                 for file in files:
                     full_path = os.path.join(root, file)
-                    await upload_file(full_path, update)  # Chama recursivamente para cada arquivo
+                    await upload_file(full_path, update)
             return
 
         server = await get_server()
         url = f"https://{server}.gofile.io/uploadFile"
         data_json = await encode_file(file_path)
+
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=data_json, headers={'Content-Type': data_json.content_type}) as response:
+                if response.status == 429:
+                    await update.message.reply_text("Rate limit atingido. Esperando 60 segundos antes de tentar novamente...")
+                    await asyncio.sleep(60)  # Espera 60 segundos antes de tentar novamente
+                    return await upload_file(file_path, update)
+
                 response_json = await response.json()
                 if response_json and 'data' in response_json:
                     await update.message.reply_text(f"Upload concluído com sucesso! Link: {response_json['data']['downloadPage']}")
