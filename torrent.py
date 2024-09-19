@@ -16,7 +16,7 @@ async def encode_file(file_path: str) -> MultipartEncoder:
     return MultipartEncoder(fields={'filesUploaded': (os.path.basename(file_path), open(file_path, 'rb'))})
 
 async def get_server() -> str:
-    url = "https://api.gofile.io/getServer"
+    url = "https://api.gofile.io/servers"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
             server = await resp.json()
@@ -25,7 +25,7 @@ async def get_server() -> str:
 async def upload_file(file_path: str, update: Update) -> None:
     try:
         server = await get_server()
-        url = f"https://{server}.gofile.io/uploadFile"
+        url = f"https://{server}.gofile.io/contents/uploadfile"
         data_json = await encode_file(file_path)
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=data_json, headers={'Content-Type': data_json.content_type}) as response:
