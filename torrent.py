@@ -97,7 +97,7 @@ async def start_download(update: Update, context: CallbackContext) -> None:
         file_path = await download_torrent(link, update, context)
         if file_path:
             await update.message.reply_text(f'Download concluído. Iniciando upload para GoFile...')
-             parallel_upload(file_path, update, context) # ->  Passar update e context aqui
+            parallel_upload(file_path, update, context) # ->  Passar update e context aqui
             await update.message.reply_text("Upload iniciado em paralelo. Aguarde o processo ser concluído.")
         else:
             await update.message.reply_text("Erro ao baixar o arquivo torrent.")
