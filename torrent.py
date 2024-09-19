@@ -7,6 +7,7 @@ import subprocess
 import threading
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
+from gofile2 import Gofile
 
 # Configurações
 bot_token = '7259838966:AAE69fL3BJKVXclATA8n6wYCKI0OmqStKrM'
@@ -14,32 +15,30 @@ GOFILE_API_KEY = "KIxsOddlMz2Iy9Bbng0e3Yke2QsUEr3j"
 DOWNLOAD_PATH = "./downloads/"
 
 
-async def execute_upload_command(file_path, update: Update, context: CallbackContext): # função definida como assíncrona
-    command = f'gofilepy "{file_path}" -e --token={GOFILE_API_KEY}'
-    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-    # Captura a saída linha por linha para atualização em tempo real (opcional)
-    for line in iter(process.stdout.readline, ''):
-        await update.message.reply_text(f"gofilepy: {line.strip()}")  # 'await' usado dentro de função assíncrona
-
-    return_code = process.wait()
-    if return_code == 0:
-        await update.message.reply_text("Upload concluído com sucesso!")
-    else:
-        error_message = process.stderr.read()
-        await update.message.reply_text(f"Erro durante o upload:\n{error_message}")
+async def execute_upload_command(file_path, update: Update, context: CallbackContext):
+    try:
+        g_a = await Gofile.initialize(token=GOFILE_API_KEY)  # Inicializa o Gofile com seu token
+        result = await g_a.upload(file=file_path)  # Faz o upload do arquivo
+        await update.message.reply_text(f"Upload concluído com sucesso! Link: {result['downloadPage']}")  # Envia mensagem de sucesso
+    except Exception as e:
+        await update.message.reply_text(f"Erro durante o upload: {e}") # Trata qualquer exceção durante o upload
 
 def execute_gofile_py(file_path):
     result = subprocess.run(['python', 'gofile.py', file_path], capture_output=True, text=True)
     return result.stdout
 
-def parallel_upload(file_path, update, context): # ->  e aqui
-    upload_thread = threading.Thread(target=execute_upload_command, args=(file_path, update, context)) #  <-  e aqui
-    gofile_thread = threading.Thread(target=execute_gofile_py, args=(file_path,))
-    upload_thread.start()
-    gofile_thread.start()
+def thread_function(file_path, update, context):
+    async def run_upload():
+        await execute_upload_command(file_path, update, context)
 
-    # Aqui você pode adicionar lógica para verificar o resultado do upload, se necessário
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(run_upload())
+    loop.close()
+
+def parallel_upload(file_path, update, context):
+    upload_thread = Thread(target=thread_function, args=(file_path, update, context))
+    upload_thread.start()
 
 async def download_torrent(link, update: Update, context: CallbackContext):
     ses = lt.session()
