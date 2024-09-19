@@ -14,14 +14,13 @@ GOFILE_API_KEY = "KIxsOddlMz2Iy9Bbng0e3Yke2QsUEr3j"
 DOWNLOAD_PATH = "./downloads/"
 
 
-def execute_upload_command(file_path):
+async def execute_upload_command(file_path, update: Update, context: CallbackContext): # função definida como assíncrona
     command = f'gofilepy "{file_path}" -e --token={GOFILE_API_KEY}'
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     # Captura a saída linha por linha para atualização em tempo real (opcional)
     for line in iter(process.stdout.readline, ''):
-        await update.message.reply_text(f"gofilepy: {line.strip()}")  # Envia cada linha como mensagem
-    process.stdout.close()
+        await update.message.reply_text(f"gofilepy: {line.strip()}")  # 'await' usado dentro de função assíncrona
 
     return_code = process.wait()
     if return_code == 0:
