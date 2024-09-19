@@ -1,8 +1,7 @@
 import os
-import requests
+import qbittorrentapi
 import speedtest
 import time
-import datetime
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, CallbackContext
 from telegram.ext import MessageHandler, filters
@@ -11,41 +10,34 @@ from telegram import ReplyKeyboardMarkup
 # Configurações
 GOFILE_API_KEY = "KIxsOddlMz2Iy9Bbng0e3Yke2QsUEr3j"
 bot_token = '7259838966:AAE69fL3BJKVXclATA8n6wYCKI0OmqStKrM'
-QB_URL = "http://localhost:8080"  # URL da API do qBittorrent
-QB_USERNAME = "admin"  # Usuário padrão do qBittorrent
-QB_PASSWORD = "adminadmin"  # Senha padrão (alterar para a senha real)
 
-# Função para autenticação no qBittorrent
-def qbittorrent_login():
-    session = requests.Session()
-    login_data = {
-        'username': QB_USERNAME,
-        'password': QB_PASSWORD
-    }
-    response = session.post(f'{QB_URL}/api/v2/auth/login', data=login_data)
-    if response.ok:
-        return session
-    else:
-        raise Exception('Erro ao autenticar no qBittorrent')
+# Conectar ao cliente qBittorrent local
+qb = qbittorrentapi.Client(host='localhost', port=8080)
 
-# Função para adicionar torrent no qBittorrent via link magnet ou arquivo .torrent
-def qbittorrent_add_torrent(session, torrent_link):
-    data = {
-        'urls': torrent_link
-    }
-    response = session.post(f'{QB_URL}/api/v2/torrents/add', data=data)
-    if response.ok:
+# Função para verificar se a conexão está funcionando
+def check_qbittorrent_connection():
+    try:
+        qb.auth_log_in()  # Testa a conexão
+    except qbittorrentapi.LoginFailed as e:
+        print(f"Erro ao conectar no qBittorrent: {e}")
+        raise
+
+# Função para adicionar torrent via link magnet ou arquivo .torrent
+def qbittorrent_add_torrent(torrent_link):
+    try:
+        # Adicionar o torrent via link magnet ou URL
+        qb.torrents_add(urls=torrent_link)
         return "Torrent adicionado com sucesso!"
-    else:
-        raise Exception('Erro ao adicionar o torrent')
+    except Exception as e:
+        raise Exception(f"Erro ao adicionar o torrent: {e}")
 
 # Função para monitorar o progresso do torrent
-def qbittorrent_get_torrents(session):
-    response = session.get(f'{QB_URL}/api/v2/torrents/info')
-    if response.ok:
-        return response.json()
-    else:
-        raise Exception('Erro ao obter informações dos torrents')
+def qbittorrent_get_torrents():
+    try:
+        torrents = qb.torrents_info()  # Pegar informações de todos os torrents
+        return torrents
+    except Exception as e:
+        raise Exception(f"Erro ao obter informações dos torrents: {e}")
 
 # Função para fazer upload do arquivo para o GoFile usando rclone
 def upload_file_rclone(file_path):
@@ -99,36 +91,33 @@ async def start_download(update: Update, context: CallbackContext) -> None:
     
     link = context.args[0]
     
-    session = qbittorrent_login()
-    await update.message.reply_text(f'Baixando `{link}`... Monitorando progresso.')
-
-    # Adicionando o torrent via API do qBittorrent
     try:
-        qbittorrent_add_torrent(session, link)
+        qbittorrent_add_torrent(link)
+        await update.message.reply_text(f'Baixando `{link}`... Monitorando progresso.')
     except Exception as e:
         await update.message.reply_text(f"Erro ao adicionar o torrent: {e}")
         return
 
     # Monitorar progresso
     while True:
-        torrents = qbittorrent_get_torrents(session)
+        torrents = qbittorrent_get_torrents()
         if not torrents:
             await update.message.reply_text("Nenhum torrent encontrado.")
             break
 
         for torrent in torrents:
             progress_message = (
-                f'{torrent["name"]} - {torrent["progress"] * 100:.2f}% completo\n'
-                f'Download: {torrent["dlspeed"] / 1000:.1f} kB/s\n'
-                f'Upload: {torrent["upspeed"] / 1000:.1f} kB/s\n'
-                f'Peers: {torrent["num_complete"]}\n'
-                f'Estado: {torrent["state"]}'
+                f'{torrent.name} - {torrent.progress * 100:.2f}% completo\n'
+                f'Download: {torrent.dlspeed / 1000:.1f} kB/s\n'
+                f'Upload: {torrent.upspeed / 1000:.1f} kB/s\n'
+                f'Peers: {torrent.num_complete}\n'
+                f'Estado: {torrent.state}'
             )
             await update.message.reply_text(progress_message)
 
             # Se o download estiver concluído
-            if torrent["state"] == "uploading":
-                file_path = os.path.join('./Torrent/', torrent["name"])
+            if torrent.state == "uploading":
+                file_path = os.path.join('./Torrent/', torrent.name)
                 rclone_response = upload_file_rclone(file_path)
                 if rclone_response:
                     await update.message.reply_text(rclone_response)
