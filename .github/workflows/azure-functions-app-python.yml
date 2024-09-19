@@ -24,12 +24,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install qbittorrent-api python-telegram-bot speedtest-cli rclone
 
-    - name: Install and configure rclone
+    - name: Criar rclone.conf a partir de segredos
       run: |
-        curl https://rclone.org/install.sh | sudo bash
-        rclone config create gofile gofile api_key ${GOFILE_API_KEY}
-      env:
-        GOFILE_API_KEY: ${{ secrets.GOFILE_API_KEY }}
+        mkdir -p ~/.config/rclone/
+        echo "[gofile]" > ~/.config/rclone/rclone.conf
+        echo "type = gofile" >> ~/.config/rclone/rclone.conf
+        echo "api_key = ${{ secrets.RCLONE_GOFILE_API_KEY }}" >> ~/.config/rclone/rclone.conf
+
 
     - name: Mount rclone
       run: |
