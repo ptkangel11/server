@@ -33,8 +33,8 @@ jobs:
 
     - name: Mount rclone
       run: |
-         mkdir -p /mnt/rclone/Torrent/
-         rclone mount gofile: /mnt/rclone/Torrent/ --vfs-cache-mode full &
+        sudo mkdir -p /mnt/rclone/Torrent/
+        sudo rclone mount gofile: /mnt/rclone/Torrent/ --vfs-cache-mode full &
    
     - name: Run Telegram Bot
       env:
