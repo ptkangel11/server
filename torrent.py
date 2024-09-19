@@ -1,35 +1,45 @@
 import os
 import time
-import datetime
 import asyncio
 import libtorrent as lt
-import subprocess
-from threading import Thread 
+import aiohttp
+from threading import Thread
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
-from gofile2 import Gofile
+from requests_toolbelt.multipart.encoder import MultipartEncoder
 
 # Configurações
 bot_token = '7259838966:AAE69fL3BJKVXclATA8n6wYCKI0OmqStKrM'
-GOFILE_API_KEY = "KIxsOddlMz2Iy9Bbng0e3Yke2QsUEr3j"
 DOWNLOAD_PATH = "./downloads/"
 
+async def encode_file(file_path: str) -> MultipartEncoder:
+    return MultipartEncoder(fields={'filesUploaded': (os.path.basename(file_path), open(file_path, 'rb'))})
 
-async def execute_upload_command(file_path, update: Update, context: CallbackContext):
+async def get_server() -> str:
+    url = "https://api.gofile.io/getServer"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            server = await resp.json()
+            return server['data']['server']
+
+async def upload_file(file_path: str) -> dict:
     try:
-        g_a = await Gofile.initialize(token=GOFILE_API_KEY)  # Inicializa o Gofile com seu token
-        result = await g_a.upload(file=file_path)  # Faz o upload do arquivo
-        await update.message.reply_text(f"Upload concluído com sucesso! Link: {result['downloadPage']}")  # Envia mensagem de sucesso
+        server = await get_server()
+        url = f"https://{server}.gofile.io/uploadFile"
+        data_json = await encode_file(file_path)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, data=data_json, headers={'Content-Type': data_json.content_type}) as response:
+                return await response.json()
     except Exception as e:
-        await update.message.reply_text(f"Erro durante o upload: {e}") # Trata qualquer exceção durante o upload
-
-def execute_gofile_py(file_path):
-    result = subprocess.run(['python', 'gofile.py', file_path], capture_output=True, text=True)
-    return result.stdout
+        print(f"ERROR UPLOAD -> {e}")
 
 def thread_function(file_path, update, context):
     async def run_upload():
-        await execute_upload_command(file_path, update, context)
+        response = await upload_file(file_path)
+        if response and 'data' in response:
+            await update.message.reply_text(f"Upload concluído com sucesso! Link: {response['data']['downloadPage']}")
+        else:
+            await update.message.reply_text("Erro durante o upload.")
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -96,7 +106,7 @@ async def start_download(update: Update, context: CallbackContext) -> None:
         file_path = await download_torrent(link, update, context)
         if file_path:
             await update.message.reply_text(f'Download concluído. Iniciando upload para GoFile...')
-            parallel_upload(file_path, update, context) # ->  Passar update e context aqui
+            parallel_upload(file_path, update, context)
             await update.message.reply_text("Upload iniciado em paralelo. Aguarde o processo ser concluído.")
         else:
             await update.message.reply_text("Erro ao baixar o arquivo torrent.")
