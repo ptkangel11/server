@@ -11,6 +11,9 @@ from telegram import ReplyKeyboardMarkup
 GOFILE_API_KEY = "KIxsOddlMz2Iy9Bbng0e3Yke2QsUEr3j"
 bot_token = '7259838966:AAE69fL3BJKVXclATA8n6wYCKI0OmqStKrM'
 
+# Diretório onde o rclone está montado
+RCLONE_MOUNT_PATH = "/mnt/rclone/Torrent/"  # Substitua pelo caminho correto onde o rclone está montado
+
 # Conectar ao cliente qBittorrent local
 qb = qbittorrentapi.Client(host='localhost', port=8080)
 
@@ -26,7 +29,7 @@ def check_qbittorrent_connection():
 def qbittorrent_add_torrent(torrent_link):
     try:
         # Adicionar o torrent via link magnet ou URL
-        qb.torrents_add(urls=torrent_link)
+        qb.torrents_add(urls=torrent_link, save_path=RCLONE_MOUNT_PATH)
         return "Torrent adicionado com sucesso!"
     except Exception as e:
         raise Exception(f"Erro ao adicionar o torrent: {e}")
@@ -46,13 +49,24 @@ def upload_file_rclone(file_path):
         os.system(rclone_upload_command)
 
         # Verificar se o arquivo ainda existe localmente (indicando que o upload foi bem-sucedido)
-        if os.path.exists(file_path):
+        if not os.path.exists(file_path):  # Arquivo removido
             return f"Upload para GoFile com rclone concluído: {file_path}"
         else:
             return "Erro no upload com rclone para GoFile."
     except Exception as e:
         print(f"Erro ao enviar o arquivo com rclone: {e}")
         return None
+
+# Função para deletar o arquivo após o upload
+def delete_local_file(file_path):
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            return f"Arquivo {file_path} deletado com sucesso."
+        else:
+            return "Arquivo não encontrado para deletar."
+    except Exception as e:
+        return f"Erro ao deletar o arquivo: {e}"
 
 # Comando para realizar o Speedtest
 async def run_speedtest(update: Update, context: CallbackContext) -> None:
@@ -117,17 +131,14 @@ async def start_download(update: Update, context: CallbackContext) -> None:
 
             # Se o download estiver concluído
             if torrent.state == "uploading":
-                file_path = os.path.join('./Torrent/', torrent.name)
+                file_path = os.path.join(RCLONE_MOUNT_PATH, torrent.name)
                 rclone_response = upload_file_rclone(file_path)
                 if rclone_response:
                     await update.message.reply_text(rclone_response)
                     
                     # Deletar arquivo após upload
-                    try:
-                        os.remove(file_path)
-                        await update.message.reply_text(f"Arquivo `{file_path}` deletado com sucesso.")
-                    except Exception as e:
-                        await update.message.reply_text(f"Erro ao deletar o arquivo: {e}")
+                    deletion_message = delete_local_file(file_path)
+                    await update.message.reply_text(deletion_message)
                 else:
                     await update.message.reply_text("Erro ao fazer upload do arquivo com rclone.")
                 return
