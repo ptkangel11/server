@@ -30,6 +30,12 @@ jobs:
         rclone config create gofile gofile api_key ${GOFILE_API_KEY}
       env:
         GOFILE_API_KEY: ${{ secrets.GOFILE_API_KEY }}
+
+    - name: Mount rclone
+      run: |
+         mkdir -p /mnt/rclone/Torrent/
+         rclone mount gofile: /mnt/rclone/Torrent/ --vfs-cache-mode full &
+
         
     - name: Run Telegram Bot
       env:
