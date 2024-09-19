@@ -1,4 +1,5 @@
 import os
+import shutil  # Importado para remover diretórios
 import qbittorrentapi
 import speedtest
 import time
@@ -57,16 +58,20 @@ def upload_file_rclone(file_path):
         print(f"Erro ao enviar o arquivo com rclone: {e}")
         return None
 
-# Função para deletar o arquivo após o upload
+# Função para deletar o arquivo ou diretório após o upload
 def delete_local_file(file_path):
     try:
         if os.path.exists(file_path):
-            os.remove(file_path)
-            return f"Arquivo {file_path} deletado com sucesso."
+            if os.path.isdir(file_path):
+                shutil.rmtree(file_path)  # Deleta o diretório e todo o seu conteúdo
+                return f"Diretório {file_path} deletado com sucesso."
+            else:
+                os.remove(file_path)  # Deleta arquivo
+                return f"Arquivo {file_path} deletado com sucesso."
         else:
-            return "Arquivo não encontrado para deletar."
+            return "Arquivo ou diretório não encontrado para deletar."
     except Exception as e:
-        return f"Erro ao deletar o arquivo: {e}"
+        return f"Erro ao deletar o arquivo ou diretório: {e}"
 
 # Comando para realizar o Speedtest
 async def run_speedtest(update: Update, context: CallbackContext) -> None:
@@ -136,7 +141,7 @@ async def start_download(update: Update, context: CallbackContext) -> None:
                 if rclone_response:
                     await update.message.reply_text(rclone_response)
                     
-                    # Deletar arquivo após upload
+                    # Deletar arquivo ou diretório após upload
                     deletion_message = delete_local_file(file_path)
                     await update.message.reply_text(deletion_message)
                 else:
