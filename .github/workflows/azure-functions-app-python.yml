@@ -28,6 +28,8 @@ jobs:
       run: |
         curl https://rclone.org/install.sh | sudo bash
         rclone config create gofile gofile api_key ${GOFILE_API_KEY}
+      env:
+        GOFILE_API_KEY: ${{ secrets.GOFILE_API_KEY }}
         
     - name: Run Telegram Bot
       env:
