@@ -4,7 +4,7 @@ import datetime
 import asyncio
 import libtorrent as lt
 import subprocess
-import threading
+from threading import Thread 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
 from gofile2 import Gofile
