@@ -23,7 +23,6 @@ async def get_server() -> str:
                 server_data = await resp.json()
                 servers = server_data['data']['servers']
                 if servers:
-                    # Pegue o primeiro servidor disponível
                     server = servers[0]['name']
                     return server
                 else:
@@ -33,6 +32,15 @@ async def get_server() -> str:
 
 async def upload_file(file_path: str, update: Update) -> None:
     try:
+        if os.path.isdir(file_path):
+            await update.message.reply_text(f"O caminho {file_path} é um diretório. Fazendo upload de todos os arquivos no diretório.")
+            # Iterar sobre os arquivos no diretório e fazer upload de cada um
+            for root, dirs, files in os.walk(file_path):
+                for file in files:
+                    full_path = os.path.join(root, file)
+                    await upload_file(full_path, update)  # Chama recursivamente para cada arquivo
+            return
+
         server = await get_server()
         url = f"https://{server}.gofile.io/uploadFile"
         data_json = await encode_file(file_path)
