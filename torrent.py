@@ -2,30 +2,29 @@ import os
 import time
 import datetime
 import libtorrent as lt
+import subprocess
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
-from gofilepy import GoFile
 
 # Configurações
-GOFILE_API_KEY = "YOUR_GOFILE_API_KEY"  # Substitua com sua chave de API do GoFile
-bot_token = 'YOUR_BOT_TOKEN'  # Substitua com seu token do bot do Telegram
+bot_token = '7259838966:AAE69fL3BJKVXclATA8n6wYCKI0OmqStKrM'  # Substitua com seu token do bot do Telegram
 DOWNLOAD_PATH = "./downloads/"  # Diretório onde o torrent será baixado
 
-# Instanciação do cliente GoFile
-gofile = GoFile(api_key=GOFILE_API_KEY)
-
-# Função para fazer upload do arquivo para o GoFile usando gofilepy
+# Função para fazer upload do arquivo para o GoFile usando CLI
 def upload_file_gofile(file_path):
     try:
-        # Fazer o upload do arquivo
-        response = gofile.upload_file(file_path)
+        # Executar o comando gofilepy
+        result = subprocess.run(['gofilepy', file_path, '-e'], capture_output=True, text=True)
         
-        # Verificar se o upload foi bem-sucedido
-        if response['status'] == 'ok':
-            file_link = response['data']['downloadPage']
-            return f"Upload para GoFile concluído! Link para download: {file_link}"
+        # Verificar se o comando foi bem-sucedido
+        if result.returncode == 0:
+            # Procurar pela URL de download na saída
+            for line in result.stdout.split('\n'):
+                if "Download page:" in line:
+                    url = line.split()[-1]
+                    return f"Upload para GoFile concluído! Link para download: {url}"
         else:
-            return f"Erro ao enviar o arquivo: {response.get('message', 'Erro desconhecido')}"
+            return f"Erro ao enviar o arquivo: {result.stderr}"
     except Exception as e:
         print(f"Erro ao fazer upload: {e}")
         return None
@@ -91,7 +90,7 @@ async def start_download(update: Update, context: CallbackContext) -> None:
     try:
         file_path = download_torrent(link)
         if file_path:
-            await update.message.reply_text(f'Baixando `{link}`... Monitorando progresso.')
+            await update.message.reply_text(f'Download de `{link}` concluído. Iniciando upload para GoFile...')
             gofile_response = upload_file_gofile(file_path)
             if gofile_response:
                 await update.message.reply_text(gofile_response)
@@ -102,13 +101,13 @@ async def start_download(update: Update, context: CallbackContext) -> None:
             else:
                 await update.message.reply_text("Erro ao fazer upload do arquivo com GoFile.")
     except Exception as e:
-        await update.message.reply_text(f"Erro ao adicionar o torrent: {e}")
+        await update.message.reply_text(f"Erro ao processar o torrent: {e}")
 
 # Função para mostrar o menu de instruções
 async def show_menu(update: Update, context: CallbackContext) -> None:
     menu_message = (
         "Bem-vindo! Aqui estão os comandos disponíveis:\n\n"
-        "/start_download <magnet_link ou .torrent URL> - Inicia o download a partir de um link magnet ou torrent.\n"
+        "/start_download <magnet_link ou .torrent URL> - Inicia o download a partir de um link magnet ou torrent e faz upload para GoFile.\n"
         "/help - Mostra este menu de ajuda.\n"
     )
     await update.message.reply_text(menu_message)
