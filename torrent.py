@@ -22,33 +22,24 @@ async def get_server() -> str:
             server = await resp.json()
             return server['data']['server']
 
-async def upload_file(file_path: str) -> dict:
+async def upload_file(file_path: str, update: Update) -> None:
     try:
         server = await get_server()
         url = f"https://{server}.gofile.io/uploadFile"
         data_json = await encode_file(file_path)
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=data_json, headers={'Content-Type': data_json.content_type}) as response:
-                return await response.json()
+                response_json = await response.json()
+                if response_json and 'data' in response_json:
+                    await update.message.reply_text(f"Upload concluído com sucesso! Link: {response_json['data']['downloadPage']}")
+                else:
+                    await update.message.reply_text("Erro durante o upload.")
     except Exception as e:
-        print(f"ERROR UPLOAD -> {e}")
+        await update.message.reply_text(f"Erro durante o upload: {e}")
 
-def thread_function(file_path, update, context):
-    async def run_upload():
-        response = await upload_file(file_path)
-        if response and 'data' in response:
-            await update.message.reply_text(f"Upload concluído com sucesso! Link: {response['data']['downloadPage']}")
-        else:
-            await update.message.reply_text("Erro durante o upload.")
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(run_upload())
-    loop.close()
-
-def parallel_upload(file_path, update, context):
-    upload_thread = Thread(target=thread_function, args=(file_path, update, context))
-    upload_thread.start()
+def parallel_upload(file_path, update):
+    loop = asyncio.get_event_loop()
+    loop.create_task(upload_file(file_path, update))
 
 async def download_torrent(link, update: Update, context: CallbackContext):
     ses = lt.session()
@@ -106,7 +97,7 @@ async def start_download(update: Update, context: CallbackContext) -> None:
         file_path = await download_torrent(link, update, context)
         if file_path:
             await update.message.reply_text(f'Download concluído. Iniciando upload para GoFile...')
-            parallel_upload(file_path, update, context)
+            parallel_upload(file_path, update)  # Passa update aqui
             await update.message.reply_text("Upload iniciado em paralelo. Aguarde o processo ser concluído.")
         else:
             await update.message.reply_text("Erro ao baixar o arquivo torrent.")
