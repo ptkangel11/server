@@ -19,13 +19,22 @@ async def get_server() -> str:
     url = "https://api.gofile.io/servers"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
-            server = await resp.json()
-            return server['data']['server']
+            if resp.status == 200:
+                server_data = await resp.json()
+                servers = server_data['data']['servers']
+                if servers:
+                    # Pegue o primeiro servidor disponível
+                    server = servers[0]['name']
+                    return server
+                else:
+                    raise Exception("Nenhum servidor disponível.")
+            else:
+                raise Exception(f"Erro ao obter o servidor GoFile. Status Code: {resp.status}")
 
 async def upload_file(file_path: str, update: Update) -> None:
     try:
         server = await get_server()
-        url = f"https://{server}.gofile.io/contents/uploadfile"
+        url = f"https://{server}.gofile.io/uploadFile"
         data_json = await encode_file(file_path)
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=data_json, headers={'Content-Type': data_json.content_type}) as response:
