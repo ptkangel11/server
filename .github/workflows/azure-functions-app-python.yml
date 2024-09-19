@@ -37,5 +37,5 @@ jobs:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         GOFILE_API_KEY: ${{ secrets.GOFILE_API_KEY }}
       run: |
-        python your_script.py
+        python gofilebot.py
 
