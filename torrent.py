@@ -13,23 +13,31 @@ bot_token = '7259838966:AAE69fL3BJKVXclATA8n6wYCKI0OmqStKrM'
 GOFILE_API_KEY = "KIxsOddlMz2Iy9Bbng0e3Yke2QsUEr3j"
 DOWNLOAD_PATH = "./downloads/"
 
-def open_terminal_and_upload(file_path):
-    terminal_command = f"gnome-terminal -- bash -c 'gofilepy \"{file_path}\" -e --token={GOFILE_API_KEY}; exec bash'"
-    subprocess.Popen(terminal_command, shell=True)
+
+def execute_upload_command(file_path):
+    command = f'gofilepy "{file_path}" -e --token={GOFILE_API_KEY}'
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
+    if process.returncode == 0:
+        return stdout.decode()
+    else:
+        return f"Erro: {stderr.decode()}"
 
 def execute_gofile_py(file_path):
     result = subprocess.run(['python', 'gofile.py', file_path], capture_output=True, text=True)
     return result.stdout
 
 def parallel_upload(file_path):
-    terminal_thread = threading.Thread(target=open_terminal_and_upload, args=(file_path,))
+    upload_thread = threading.Thread(target=execute_upload_command, args=(file_path,))
     gofile_thread = threading.Thread(target=execute_gofile_py, args=(file_path,))
 
-    terminal_thread.start()
+    upload_thread.start()
     gofile_thread.start()
 
-    terminal_thread.join()
+    upload_thread.join()
     gofile_thread.join()
+
+    # Aqui você pode adicionar lógica para verificar o resultado do upload, se necessário
 
 async def download_torrent(link, update: Update, context: CallbackContext):
     ses = lt.session()
@@ -88,7 +96,7 @@ async def start_download(update: Update, context: CallbackContext) -> None:
         if file_path:
             await update.message.reply_text(f'Download concluído. Iniciando upload para GoFile...')
             parallel_upload(file_path)
-            await update.message.reply_text("Upload iniciado em paralelo. Verifique o terminal aberto e a execução do gofile.py.")
+            await update.message.reply_text("Upload iniciado em paralelo. Aguarde o processo ser concluído.")
         else:
             await update.message.reply_text("Erro ao baixar o arquivo torrent.")
     except Exception as e:
