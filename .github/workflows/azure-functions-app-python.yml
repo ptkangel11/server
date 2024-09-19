@@ -24,7 +24,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install qbittorrent-api python-telegram-bot speedtest-cli rclone
 
-     - name: Install and configure rclone
+      
+    - name: Install and configure rclone
       run: |
         curl https://rclone.org/install.sh | sudo bash
         rclone config create gofile gofile api_key ${GOFILE_API_KEY}
