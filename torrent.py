@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, CallbackContext
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 
 # Configurações
-bot_token = 'SEU_TOKEN_AQUI'
+bot_token = '7259838966:AAE69fL3BJKVXclATA8n6wYCKI0OmqStKrM'
 DOWNLOAD_PATH = "./downloads/"
 
 async def encode_file(file_path: str) -> MultipartEncoder:
