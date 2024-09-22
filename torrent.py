@@ -1,54 +1,35 @@
 import os
 import time
 import asyncio
-import libtorrent as lt
 import aiohttp
-import shutil
+from threading import Thread
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
-from requests_toolbelt.multipart.encoder import MultipartEncoder
+import libtorrent as lt
 
 # Configurações
-bot_token = '7259838966:AAE69fL3BJKVXclATA8n6wYCKI0OmqStKrM'
+bot_token = 'SEU_TOKEN_AQUI'
 DOWNLOAD_PATH = "./downloads/"
 
-async def encode_file(file_path: str) -> MultipartEncoder:
-    """Cria o arquivo multipart para upload"""
-    return MultipartEncoder(fields={'file': (os.path.basename(file_path), open(file_path, 'rb'), 'application/octet-stream')})
-
-async def get_server() -> str:
-    """Obtém o servidor disponível do GoFile para upload"""
-    url = "https://api.gofile.io/servers"
+async def create_folder(parent_folder_id: str = None) -> str:
+    """Cria uma pasta no GoFile para agrupar os uploads"""
+    url = "https://api.gofile.io/createFolder"
     async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            if resp.status == 429:
-                raise Exception("Rate limit atingido. Tentando novamente após 60 segundos...")
-            if resp.status == 200:
-                server_data = await resp.json()
-                servers = server_data['data']['servers']
-                if servers:
-                    return servers[0]['name']  # Retorna o primeiro servidor disponível
-                else:
-                    raise Exception("Nenhum servidor disponível.")
+        params = {
+            'token': 'SEU_TOKEN_DE_USUARIO_AQUI',  # Utilize seu token de API se necessário
+            'folderName': 'UploadsTelegramBot',
+            'parentFolderId': parent_folder_id
+        }
+        async with session.post(url, data=params) as resp:
+            response_json = await resp.json()
+            if response_json and 'data' in response_json:
+                return response_json['data']['id']
             else:
-                raise Exception(f"Erro ao obter o servidor GoFile. Status Code: {resp.status}")
+                raise Exception(f"Erro ao criar pasta: {response_json}")
 
-def zip_folder(folder_path: str) -> str:
-    """Compacta uma pasta e retorna o caminho do arquivo zip"""
-    output_zip = os.path.join(DOWNLOAD_PATH, os.path.basename(folder_path) + '.zip')
-    shutil.make_archive(output_zip.replace('.zip', ''), 'zip', folder_path)
-    return output_zip
-
-async def upload_file(file_path: str, update: Update) -> None:
-    """Realiza o upload de um arquivo para GoFile"""
+async def upload_file_to_folder(file_path: str, folder_id: str, update: Update) -> None:
+    """Realiza o upload de um arquivo para uma pasta específica no GoFile"""
     try:
-        # Se for um diretório, compactar
-        if os.path.isdir(file_path):
-            await update.message.reply_text(f"O caminho {file_path} é um diretório. Compactando...")
-            file_path = zip_folder(file_path)
-            await update.message.reply_text(f"Diretório compactado: {file_path}")
-
-        # Obter servidor GoFile
         server = await get_server()
         url = f"https://{server}.gofile.io/uploadFile"
 
@@ -60,29 +41,43 @@ async def upload_file(file_path: str, update: Update) -> None:
             filename=os.path.basename(file_path),
             content_type='application/octet-stream'
         )
+        form_data.add_field('folderId', folder_id)
 
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=form_data) as response:
                 if response.status == 429:
                     await update.message.reply_text("Rate limit atingido. Esperando 60 segundos antes de tentar novamente...")
-                    await asyncio.sleep(60)  # Espera 60 segundos antes de tentar novamente
-                    return await upload_file(file_path, update)
+                    await asyncio.sleep(60)
+                    return await upload_file_to_folder(file_path, folder_id, update)
 
                 response_json = await response.json()
                 if response_json and 'data' in response_json:
-                    await update.message.reply_text(f"Upload concluído com sucesso! Link: {response_json['data']['downloadPage']}")
+                    await update.message.reply_text(f"Upload de {file_path} concluído! Link: {response_json['data']['downloadPage']}")
                 else:
-                    await update.message.reply_text("Erro durante o upload.")
+                    await update.message.reply_text(f"Erro durante o upload de {file_path}.")
     except Exception as e:
-        await update.message.reply_text(f"Erro durante o upload: {e}")
+        await update.message.reply_text(f"Erro durante o upload de {file_path}: {e}")
 
-def parallel_upload(file_path, update):
-    """Executa o upload de arquivo em segundo plano"""
+async def upload_directory(directory_path: str, update: Update) -> None:
+    """Realiza o upload de todos os arquivos de um diretório para a mesma pasta no GoFile"""
+    try:
+        folder_id = await create_folder()
+        await update.message.reply_text(f"Pasta criada no GoFile. Iniciando upload dos arquivos para a pasta.")
+
+        for root, dirs, files in os.walk(directory_path):
+            for file in files:
+                full_path = os.path.join(root, file)
+                await upload_file_to_folder(full_path, folder_id, update)
+
+        await update.message.reply_text("Upload de todos os arquivos concluído!")
+    except Exception as e:
+        await update.message.reply_text(f"Erro durante o upload do diretório: {e}")
+
+def parallel_upload(directory_path, update):
     loop = asyncio.get_event_loop()
-    loop.create_task(upload_file(file_path, update))
+    loop.create_task(upload_directory(directory_path, update))
 
 async def download_torrent(link, update: Update, context: CallbackContext):
-    """Faz o download de um torrent a partir de um link magnet ou URL"""
     ses = lt.session()
     ses.listen_on(6881, 6891)
     params = {
@@ -128,7 +123,6 @@ async def download_torrent(link, update: Update, context: CallbackContext):
     return os.path.join(DOWNLOAD_PATH, handle.name())
 
 async def start_download(update: Update, context: CallbackContext) -> None:
-    """Inicia o processo de download e upload de um torrent"""
     if len(context.args) == 0:
         await update.message.reply_text("Por favor, forneça um link magnet ou um URL de arquivo torrent.")
         return
@@ -139,15 +133,30 @@ async def start_download(update: Update, context: CallbackContext) -> None:
         file_path = await download_torrent(link, update, context)
         if file_path:
             await update.message.reply_text(f'Download concluído. Iniciando upload para GoFile...')
-            parallel_upload(file_path, update)  # Passa update aqui
+            parallel_upload(file_path, update)
             await update.message.reply_text("Upload iniciado em paralelo. Aguarde o processo ser concluído.")
         else:
             await update.message.reply_text("Erro ao baixar o arquivo torrent.")
     except Exception as e:
         await update.message.reply_text(f"Erro ao processar o torrent: {e}")
 
+async def get_server() -> str:
+    url = "https://api.gofile.io/servers"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.status == 429:
+                raise Exception("Rate limit atingido. Tentando novamente após 60 segundos...")
+            if resp.status == 200:
+                server_data = await resp.json()
+                servers = server_data['data']['servers']
+                if servers:
+                    return servers[0]['name']
+                else:
+                    raise Exception("Nenhum servidor disponível.")
+            else:
+                raise Exception(f"Erro ao obter o servidor GoFile. Status Code: {resp.status}")
+
 async def show_menu(update: Update, context: CallbackContext) -> None:
-    """Exibe o menu de ajuda"""
     menu_message = (
         "Bem-vindo! Aqui estão os comandos disponíveis:\n\n"
         "/start_download <magnet_link ou .torrent URL> - Inicia o download a partir de um link magnet ou torrent e faz upload para GoFile.\n"
@@ -162,7 +171,5 @@ application.add_handler(CommandHandler('start_download', start_download))
 application.add_handler(CommandHandler('help', show_menu))
 
 if __name__ == '__main__':
-    # Criando diretório de download se não existir
     os.makedirs(DOWNLOAD_PATH, exist_ok=True)
-    
     application.run_polling()
