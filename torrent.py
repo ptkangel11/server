@@ -17,7 +17,7 @@ async def create_folder(parent_folder_id: str = None) -> str:
     
     headers = {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer SEU_TOKEN_DE_USUARIO_AQUI'  # Substitua com seu token
+        'Authorization': 'Bearer KIxsOddlMz2Iy9Bbng0e3Yke2QsUEr3j'  # Substitua com seu token
     }
 
     json_data = {
