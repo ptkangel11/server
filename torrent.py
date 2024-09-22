@@ -8,7 +8,7 @@ from telegram.ext import Application, CommandHandler, CallbackContext
 import libtorrent as lt
 
 # Configurações
-bot_token = 'SEU_TOKEN_AQUI'
+bot_token = '7259838966:AAE69fL3BJKVXclATA8n6wYCKI0OmqStKrM'
 DOWNLOAD_PATH = "./downloads/"
 
 async def create_folder(parent_folder_id: str = None) -> str:
