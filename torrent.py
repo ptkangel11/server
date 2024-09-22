@@ -3,19 +3,21 @@ import time
 import asyncio
 import libtorrent as lt
 import aiohttp
-from threading import Thread
+import shutil
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 
 # Configurações
-bot_token = '7259838966:AAE69fL3BJKVXclATA8n6wYCKI0OmqStKrM'
+bot_token = 'SEU_TOKEN_AQUI'
 DOWNLOAD_PATH = "./downloads/"
 
 async def encode_file(file_path: str) -> MultipartEncoder:
+    """Cria o arquivo multipart para upload"""
     return MultipartEncoder(fields={'file': (os.path.basename(file_path), open(file_path, 'rb'), 'application/octet-stream')})
 
 async def get_server() -> str:
+    """Obtém o servidor disponível do GoFile para upload"""
     url = "https://api.gofile.io/servers"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
@@ -31,16 +33,22 @@ async def get_server() -> str:
             else:
                 raise Exception(f"Erro ao obter o servidor GoFile. Status Code: {resp.status}")
 
-async def upload_file(file_path: str, update: Update) -> None:
-    try:
-        if os.path.isdir(file_path):
-            await update.message.reply_text(f"O caminho {file_path} é um diretório. Fazendo upload de todos os arquivos no diretório.")
-            for root, dirs, files in os.walk(file_path):
-                for file in files:
-                    full_path = os.path.join(root, file)
-                    await upload_file(full_path, update)
-            return
+def zip_folder(folder_path: str) -> str:
+    """Compacta uma pasta e retorna o caminho do arquivo zip"""
+    output_zip = os.path.join(DOWNLOAD_PATH, os.path.basename(folder_path) + '.zip')
+    shutil.make_archive(output_zip.replace('.zip', ''), 'zip', folder_path)
+    return output_zip
 
+async def upload_file(file_path: str, update: Update) -> None:
+    """Realiza o upload de um arquivo para GoFile"""
+    try:
+        # Se for um diretório, compactar
+        if os.path.isdir(file_path):
+            await update.message.reply_text(f"O caminho {file_path} é um diretório. Compactando...")
+            file_path = zip_folder(file_path)
+            await update.message.reply_text(f"Diretório compactado: {file_path}")
+
+        # Obter servidor GoFile
         server = await get_server()
         url = f"https://{server}.gofile.io/uploadFile"
         data_json = await encode_file(file_path)
@@ -61,10 +69,12 @@ async def upload_file(file_path: str, update: Update) -> None:
         await update.message.reply_text(f"Erro durante o upload: {e}")
 
 def parallel_upload(file_path, update):
+    """Executa o upload de arquivo em segundo plano"""
     loop = asyncio.get_event_loop()
     loop.create_task(upload_file(file_path, update))
 
 async def download_torrent(link, update: Update, context: CallbackContext):
+    """Faz o download de um torrent a partir de um link magnet ou URL"""
     ses = lt.session()
     ses.listen_on(6881, 6891)
     params = {
@@ -110,6 +120,7 @@ async def download_torrent(link, update: Update, context: CallbackContext):
     return os.path.join(DOWNLOAD_PATH, handle.name())
 
 async def start_download(update: Update, context: CallbackContext) -> None:
+    """Inicia o processo de download e upload de um torrent"""
     if len(context.args) == 0:
         await update.message.reply_text("Por favor, forneça um link magnet ou um URL de arquivo torrent.")
         return
@@ -128,6 +139,7 @@ async def start_download(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text(f"Erro ao processar o torrent: {e}")
 
 async def show_menu(update: Update, context: CallbackContext) -> None:
+    """Exibe o menu de ajuda"""
     menu_message = (
         "Bem-vindo! Aqui estão os comandos disponíveis:\n\n"
         "/start_download <magnet_link ou .torrent URL> - Inicia o download a partir de um link magnet ou torrent e faz upload para GoFile.\n"
@@ -135,10 +147,14 @@ async def show_menu(update: Update, context: CallbackContext) -> None:
     )
     await update.message.reply_text(menu_message)
 
+# Configurando o bot
 application = Application.builder().token(bot_token).build()
 
 application.add_handler(CommandHandler('start_download', start_download))
 application.add_handler(CommandHandler('help', show_menu))
 
 if __name__ == '__main__':
+    # Criando diretório de download se não existir
+    os.makedirs(DOWNLOAD_PATH, exist_ok=True)
+    
     application.run_polling()
