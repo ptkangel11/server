@@ -51,10 +51,18 @@ async def upload_file(file_path: str, update: Update) -> None:
         # Obter servidor GoFile
         server = await get_server()
         url = f"https://{server}.gofile.io/uploadFile"
-        data_json = await encode_file(file_path)
+
+        # Criar FormData para envio correto com aiohttp
+        form_data = aiohttp.FormData()
+        form_data.add_field(
+            'file',
+            open(file_path, 'rb'),
+            filename=os.path.basename(file_path),
+            content_type='application/octet-stream'
+        )
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, data=data_json, headers={'Content-Type': data_json.content_type}) as response:
+            async with session.post(url, data=form_data) as response:
                 if response.status == 429:
                     await update.message.reply_text("Rate limit atingido. Esperando 60 segundos antes de tentar novamente...")
                     await asyncio.sleep(60)  # Espera 60 segundos antes de tentar novamente
