@@ -23,7 +23,7 @@ async def create_folder(parent_folder_id: str = None) -> str:
     json_data = {
         'folderName': 'UploadsTelegramBot'  # Nome opcional
     }
-
+    parent_folder_id = '60447454-2e9a-4ecd-b990-f597ffb87e0c'
     # Se parent_folder_id não for fornecido, não inclui no JSON
     if parent_folder_id:
         json_data['parentFolderId'] = parent_folder_id
