@@ -11,7 +11,7 @@ bot_token = '7259838966:AAE69fL3BJKVXclATA8n6wYCKI0OmqStKrM'
 DOWNLOAD_PATH = "./downloads/"
 
 async def create_folder(parent_folder_id: str = None) -> str:
-    """Cria uma pasta no GoFile para agrupar os uploads"""
+    """Cria uma pasta no GoFile para agrupar os uploads."""
     url = "https://api.gofile.io/contents/createFolder"
     
     headers = {
@@ -35,10 +35,10 @@ async def create_folder(parent_folder_id: str = None) -> str:
                 raise Exception(f"Erro ao criar pasta: {response_json}")
 
 async def upload_file_to_folder(file_path: str, folder_id: str, update: Update) -> None:
-    """Realiza o upload de um arquivo para uma pasta específica no GoFile"""
+    """Realiza o upload de um arquivo para uma pasta específica no GoFile."""
     try:
         server = await get_server()
-        url = f"https://{server}.gofile.io/uploadFile"
+        url = f"https://{server}.gofile.io/contents/uploadFile"
 
         # Criar FormData para envio correto com aiohttp
         form_data = aiohttp.FormData()
@@ -66,7 +66,7 @@ async def upload_file_to_folder(file_path: str, folder_id: str, update: Update) 
         await update.message.reply_text(f"Erro durante o upload de {file_path}: {e}")
 
 async def upload_directory(directory_path: str, folder_id: str, update: Update) -> None:
-    """Realiza o upload de todos os arquivos de um diretório para a mesma pasta no GoFile"""
+    """Realiza o upload de todos os arquivos de um diretório para a mesma pasta no GoFile."""
     try:
         await update.message.reply_text(f"Iniciando upload dos arquivos para a pasta {folder_id}.")
 
@@ -79,7 +79,8 @@ async def upload_directory(directory_path: str, folder_id: str, update: Update) 
     except Exception as e:
         await update.message.reply_text(f"Erro durante o upload do diretório: {e}")
 
-async def download_torrent(link, update: Update, context: CallbackContext) -> str:
+async def download_torrent(link: str, update: Update) -> str:
+    """Faz o download de um torrent a partir de um link."""
     ses = lt.session()
     ses.listen_on(6881, 6891)
     params = {
@@ -96,8 +97,6 @@ async def download_torrent(link, update: Update, context: CallbackContext) -> st
     while not handle.has_metadata():
         await asyncio.sleep(1)
         await status_message.edit_text("Baixando metadata...")
-
-    print("Iniciando", handle.name())
 
     while handle.status().state != lt.torrent_status.seeding:
         s = handle.status()
@@ -125,6 +124,7 @@ async def download_torrent(link, update: Update, context: CallbackContext) -> st
     return os.path.join(DOWNLOAD_PATH, handle.name())
 
 async def start_download(update: Update, context: CallbackContext) -> None:
+    """Inicia o download e upload do torrent."""
     if len(context.args) == 0:
         await update.message.reply_text("Por favor, forneça um link magnet ou um URL de arquivo torrent.")
         return
@@ -132,7 +132,7 @@ async def start_download(update: Update, context: CallbackContext) -> None:
     link = context.args[0]
 
     try:
-        file_path = await download_torrent(link, update, context)
+        file_path = await download_torrent(link, update)
         if file_path:
             await update.message.reply_text(f'Download concluído. Criando pasta no GoFile...')
             folder_id = await create_folder()  # Cria a pasta no GoFile
@@ -143,6 +143,7 @@ async def start_download(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text(f"Erro ao processar o torrent: {e}")
 
 async def get_server() -> str:
+    """Obtém um servidor disponível do GoFile."""
     url = "https://api.gofile.io/servers"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
@@ -159,6 +160,7 @@ async def get_server() -> str:
                 raise Exception(f"Erro ao obter o servidor GoFile. Status Code: {resp.status}")
 
 async def show_menu(update: Update, context: CallbackContext) -> None:
+    """Exibe o menu de comandos do bot."""
     menu_message = (
         "Bem-vindo! Aqui estão os comandos disponíveis:\n\n"
         "/start_download <magnet_link ou .torrent URL> - Inicia o download a partir de um link magnet ou torrent e faz upload para GoFile.\n"
