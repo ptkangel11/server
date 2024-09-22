@@ -36,11 +36,11 @@ async def create_folder(parent_folder_id: str = None) -> str:
             response_json = await resp.json()
             logger.info(f"Create folder response: {response_json}")
             if resp.status == 200 and response_json.get('status') == 'ok':
-                folder_id = response_json.get('data', {}).get('folderId')
+                folder_id = response_json.get('data', {}).get('id')  # Alterado de 'folderId' para 'id'
                 if folder_id:
                     return folder_id
                 else:
-                    error_message = f"Folder ID não encontrado na resposta: {response_json}"
+                    error_message = f"ID da pasta não encontrado na resposta: {response_json}"
                     logger.error(error_message)
                     raise Exception(error_message)
             else:
