@@ -40,7 +40,6 @@ async def upload_file_to_folder(file_path: str, folder_id: str, update: Update) 
         server = await get_server()
         url = f"https://{server}.gofile.io/contents/uploadFile"
 
-        # Criar FormData para envio correto com aiohttp
         form_data = aiohttp.FormData()
         form_data.add_field(
             'file',
@@ -136,7 +135,10 @@ async def start_download(update: Update, context: CallbackContext) -> None:
         if file_path:
             await update.message.reply_text(f'Download concluído. Criando pasta no GoFile...')
             folder_id = await create_folder()  # Cria a pasta no GoFile
-            await upload_directory(os.path.dirname(file_path), folder_id, update)  # Faz o upload dos arquivos baixados
+            if folder_id:  # Verifica se o folder_id foi retornado corretamente
+                await upload_directory(os.path.dirname(file_path), folder_id, update)  # Faz o upload dos arquivos baixados
+            else:
+                await update.message.reply_text("Erro ao criar a pasta no GoFile.")
         else:
             await update.message.reply_text("Erro ao baixar o arquivo torrent.")
     except Exception as e:
