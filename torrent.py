@@ -65,11 +65,10 @@ async def upload_file_to_folder(file_path: str, folder_id: str, update: Update) 
     except Exception as e:
         await update.message.reply_text(f"Erro durante o upload de {file_path}: {e}")
 
-async def upload_directory(directory_path: str, update: Update) -> None:
+async def upload_directory(directory_path: str, folder_id: str, update: Update) -> None:
     """Realiza o upload de todos os arquivos de um diretório para a mesma pasta no GoFile"""
     try:
-        folder_id = await create_folder()
-        await update.message.reply_text(f"Pasta criada no GoFile. Iniciando upload dos arquivos para a pasta.")
+        await update.message.reply_text(f"Iniciando upload dos arquivos para a pasta {folder_id}.")
 
         for root, dirs, files in os.walk(directory_path):
             for file in files:
@@ -80,22 +79,70 @@ async def upload_directory(directory_path: str, update: Update) -> None:
     except Exception as e:
         await update.message.reply_text(f"Erro durante o upload do diretório: {e}")
 
-async def start_upload_directory(update: Update, context: CallbackContext) -> None:
-    """Comando do bot para iniciar o upload de um diretório"""
+async def download_torrent(link, update: Update, context: CallbackContext) -> str:
+    ses = lt.session()
+    ses.listen_on(6881, 6891)
+    params = {
+        'save_path': DOWNLOAD_PATH,
+        'storage_mode': lt.storage_mode_t(2)
+    }
+
+    handle = lt.add_magnet_uri(ses, link, params)
+    ses.start_dht()
+
+    begin = time.time()
+    status_message = await update.message.reply_text("Iniciando download do torrent...")
+
+    while not handle.has_metadata():
+        await asyncio.sleep(1)
+        await status_message.edit_text("Baixando metadata...")
+
+    print("Iniciando", handle.name())
+
+    while handle.status().state != lt.torrent_status.seeding:
+        s = handle.status()
+        state_str = ['queued', 'checking', 'downloading metadata',
+                     'downloading', 'finished', 'seeding', 'allocating']
+        status_text = (
+            f"Nome: {handle.name()}\n"
+            f"Status: {state_str[s.state]}\n"
+            f"Progresso: {s.progress * 100:.2f}%\n"
+            f"Download: {s.download_rate / 1000:.1f} kB/s\n"
+            f"Upload: {s.upload_rate / 1000:.1f} kB/s\n"
+            f"Peers: {s.num_peers}"
+        )
+        await status_message.edit_text(status_text)
+        await asyncio.sleep(5)
+
+    end = time.time()
+    elapsed_time = int(end - begin)
+    final_status = (
+        f"Download completo: {handle.name()}\n"
+        f"Tempo total: {elapsed_time // 60} min : {elapsed_time % 60} sec"
+    )
+    await status_message.edit_text(final_status)
+
+    return os.path.join(DOWNLOAD_PATH, handle.name())
+
+async def start_download(update: Update, context: CallbackContext) -> None:
     if len(context.args) == 0:
-        await update.message.reply_text("Por favor, forneça o caminho de um diretório.")
+        await update.message.reply_text("Por favor, forneça um link magnet ou um URL de arquivo torrent.")
         return
     
-    directory_path = context.args[0]
+    link = context.args[0]
 
-    if os.path.isdir(directory_path):
-        await update.message.reply_text(f"Iniciando upload do diretório {directory_path}.")
-        await upload_directory(directory_path, update)
-    else:
-        await update.message.reply_text(f"O caminho {directory_path} não é um diretório válido.")
+    try:
+        file_path = await download_torrent(link, update, context)
+        if file_path:
+            await update.message.reply_text(f'Download concluído. Criando pasta no GoFile...')
+            folder_id = await create_folder()  # Cria a pasta no GoFile
+            await upload_directory(os.path.dirname(file_path), folder_id, update)  # Faz o upload dos arquivos baixados
+        else:
+            await update.message.reply_text("Erro ao baixar o arquivo torrent.")
+    except Exception as e:
+        await update.message.reply_text(f"Erro ao processar o torrent: {e}")
 
 async def get_server() -> str:
-    """Obtém o servidor disponível do GoFile para upload"""
     url = "https://api.gofile.io/servers"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
@@ -114,7 +161,7 @@ async def get_server() -> str:
 async def show_menu(update: Update, context: CallbackContext) -> None:
     menu_message = (
         "Bem-vindo! Aqui estão os comandos disponíveis:\n\n"
-        "/start_upload_directory <diretório> - Faz upload de todos os arquivos de um diretório para o GoFile.\n"
+        "/start_download <magnet_link ou .torrent URL> - Inicia o download a partir de um link magnet ou torrent e faz upload para GoFile.\n"
         "/help - Mostra este menu de ajuda.\n"
     )
     await update.message.reply_text(menu_message)
@@ -122,7 +169,7 @@ async def show_menu(update: Update, context: CallbackContext) -> None:
 # Configurando o bot
 application = Application.builder().token(bot_token).build()
 
-application.add_handler(CommandHandler('start_upload_directory', start_upload_directory))
+application.add_handler(CommandHandler('start_download', start_download))
 application.add_handler(CommandHandler('help', show_menu))
 
 if __name__ == '__main__':
