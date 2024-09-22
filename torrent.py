@@ -96,7 +96,59 @@ async def upload_directory(directory_path: str, folder_id: str, update: Update) 
 
 async def download_torrent(link: str, update: Update) -> str:
     """Faz o download de um torrent a partir de um link."""
-    # ... (rest of the function remains the same)
+    try:
+        logger.info(f"Iniciando download do torrent: {link}")
+        ses = lt.session()
+        ses.listen_on(6881, 6891)
+        params = {
+            'save_path': DOWNLOAD_PATH,
+            'storage_mode': lt.storage_mode_t.storage_mode_sparse
+        }
+
+        logger.info("Adicionando magnet link")
+        handle = lt.add_magnet_uri(ses, link, params)
+        ses.start_dht()
+
+        logger.info("Aguardando metadata")
+        begin = time.time()
+        status_message = await update.message.reply_text("Iniciando download do torrent...")
+
+        while not handle.has_metadata():
+            await asyncio.sleep(1)
+            await status_message.edit_text("Baixando metadata...")
+
+        logger.info("Metadata recebida, iniciando download")
+        while handle.status().state != lt.torrent_status.seeding:
+            s = handle.status()
+            state_str = ['queued', 'checking', 'downloading metadata',
+                         'downloading', 'finished', 'seeding', 'allocating']
+            status_text = (
+                f"Nome: {handle.name()}\n"
+                f"Status: {state_str[s.state]}\n"
+                f"Progresso: {s.progress * 100:.2f}%\n"
+                f"Download: {s.download_rate / 1000:.1f} kB/s\n"
+                f"Upload: {s.upload_rate / 1000:.1f} kB/s\n"
+                f"Peers: {s.num_peers}"
+            )
+            logger.info(status_text)
+            await status_message.edit_text(status_text)
+            await asyncio.sleep(5)
+
+        end = time.time()
+        elapsed_time = int(end - begin)
+        final_status = (
+            f"Download completo: {handle.name()}\n"
+            f"Tempo total: {elapsed_time // 60} min : {elapsed_time % 60} sec"
+        )
+        logger.info(final_status)
+        await status_message.edit_text(final_status)
+
+        return os.path.join(DOWNLOAD_PATH, handle.name())
+    except Exception as e:
+        error_message = f"Erro durante o download do torrent: {str(e)}"
+        logger.error(error_message, exc_info=True)
+        await update.message.reply_text(error_message)
+        return None
 
 async def start_download(update: Update, context: CallbackContext) -> None:
     """Inicia o download e upload do torrent."""
@@ -123,8 +175,8 @@ async def start_download(update: Update, context: CallbackContext) -> None:
             logger.error(error_message)
             await update.message.reply_text(error_message)
     except Exception as e:
-        error_message = f"Erro ao processar o torrent: {e}"
-        logger.error(error_message)
+        error_message = f"Erro ao processar o torrent: {str(e)}"
+        logger.error(error_message, exc_info=True)
         await update.message.reply_text(error_message)
 
 async def get_server() -> str:
