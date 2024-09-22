@@ -13,17 +13,23 @@ DOWNLOAD_PATH = "./downloads/"
 
 async def create_folder(parent_folder_id: str = None) -> str:
     """Cria uma pasta no GoFile para agrupar os uploads"""
-    url = "https://api.gofile.io/createFolder"
+    url = "https://api.gofile.io/contents/createFolder"
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer KIxsOddlMz2Iy9Bbng0e3Yke2QsUEr3j'  # Substitua com seu token
+    }
+
+    json_data = {
+        'parentFolderId': parent_folder_id,
+        'folderName': 'UploadsTelegramBot'  # Nome opcional, você pode alterar ou remover
+    }
+
     async with aiohttp.ClientSession() as session:
-        params = {
-            'token': 'SEU_TOKEN_DE_USUARIO_AQUI',  # Utilize seu token de API se necessário
-            'folderName': 'UploadsTelegramBot',
-            'parentFolderId': parent_folder_id
-        }
-        async with session.post(url, data=params) as resp:
+        async with session.post(url, json=json_data, headers=headers) as resp:
             response_json = await resp.json()
-            if response_json and 'data' in response_json:
-                return response_json['data']['id']
+            if resp.status == 200 and 'data' in response_json:
+                return response_json['data']['folderId']
             else:
                 raise Exception(f"Erro ao criar pasta: {response_json}")
 
