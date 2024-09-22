@@ -17,13 +17,16 @@ async def create_folder(parent_folder_id: str = None) -> str:
     
     headers = {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer KIxsOddlMz2Iy9Bbng0e3Yke2QsUEr3j'  # Substitua com seu token
+        'Authorization': 'Bearer SEU_TOKEN_DE_USUARIO_AQUI'  # Substitua com seu token
     }
 
     json_data = {
-        'parentFolderId': parent_folder_id,
-        'folderName': 'UploadsTelegramBot'  # Nome opcional, você pode alterar ou remover
+        'folderName': 'UploadsTelegramBot'  # Nome opcional
     }
+
+    # Se parent_folder_id não for fornecido, não inclui no JSON
+    if parent_folder_id:
+        json_data['parentFolderId'] = parent_folder_id
 
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=json_data, headers=headers) as resp:
